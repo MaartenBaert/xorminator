@@ -1,0 +1,17 @@
+{
+  signal: [
+    {name: "clk"         , wave: "p....|.......|...|..."},
+    {name: "rst"         , wave: "01..0|.......|...|..."},
+    {name: "result_data" , wave: "x...x|.555555|...|...", data: ["R0", "R1", "R2", "R3", "R4", "..."]},
+    {name: "result_valid", wave: "x.0..|.1.....|...|..."},
+    {name: "test_passed" , wave: "x.0..|.......|.1.|.0."},
+    {name: "test_failed" , wave: "x.0..|.......|...|.1."},
+    {                      node: "..A......B.....C...D.", phase: -0.35},
+  ],
+  edge: [
+    'A reset & startup',
+    'B first valid data',
+    'C 1st self-test passes',
+    'D Nth self-test fails'
+  ]
+}

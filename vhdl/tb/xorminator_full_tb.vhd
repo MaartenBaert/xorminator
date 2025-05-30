@@ -57,7 +57,7 @@ begin
         wait until rising_edge(clk);
         wait until rising_edge(clk);
         rst <= '0';
-        for i in 0 to 3000 loop
+        for i in 0 to 80000 loop
             wait until rising_edge(clk);
         end loop;
         rst <= '1';

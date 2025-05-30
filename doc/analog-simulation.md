@@ -50,3 +50,5 @@ different. If we zoom in on the first 5ns of the simulation, we can see how
 small amounts of jitter can cause large glitches to appear or disappear:
 
 ![Simulation result](img/sim-analog-tnoise-16-zoom.png)
+
+Thanks to this effect, thermal noise is amplified and very tiny deviations quickly turn into large, easily measurable difference. This is the key difference between a chaotic oscillator and a simpler ring oscillator: while both circuits accumulate jitter, the chaotic amplifier also amplifiers the jitter and makes it observable much more quickly.

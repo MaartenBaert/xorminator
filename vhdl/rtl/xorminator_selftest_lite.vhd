@@ -23,7 +23,7 @@ entity xorminator_selftest_lite is
         -- advanced test result output
         adv_done       : out std_logic;
         adv_subtest    : out unsigned(2 downto 0);
-        adv_hist_value : out unsigned(7 downto 0)
+        adv_hist_value : out unsigned(9 downto 0)
 
     );
 end xorminator_selftest_lite;
@@ -31,20 +31,20 @@ end xorminator_selftest_lite;
 architecture rtl of xorminator_selftest_lite is
 
     -- FSM
-    signal r_counter     : unsigned(7 downto 0);
+    signal r_counter     : unsigned(9 downto 0);
     signal r_subtest     : unsigned(2 downto 0);
     signal r_test_passed : std_logic;
     signal r_test_failed : std_logic;
 
     -- histogram value
-    signal r_hist_value  : unsigned(7 downto 0);
+    signal r_hist_value  : unsigned(9 downto 0);
 
 begin
 
     -- outputs
     test_passed    <= r_test_passed;
     test_failed    <= r_test_failed;
-    adv_done       <= '1' when r_counter = 255 else '0';
+    adv_done       <= '1' when r_counter = 1023 else '0';
     adv_subtest    <= r_subtest;
     adv_hist_value <= r_hist_value;
 
@@ -58,18 +58,18 @@ begin
                 r_test_failed <= '0';
                 r_hist_value <= (others => '0');
             else
-                if raw_valid = '1' and r_test_failed = '0' then
+                if raw_valid = '1' then
                     r_counter <= r_counter + 1;
-                    if r_counter = 255 then
+                    if r_counter = 1023 then
 
                         -- determine whether the test has passed or failed
-                        if r_hist_value < 32 or r_hist_value >= 224 then
+                        if r_hist_value < 256 or r_hist_value >= 768 then
                             r_test_passed <= '0';
                             r_test_failed <= '1';
                         else
                             r_subtest <= r_subtest + 1;
                             if r_subtest = 7 then
-                                r_test_passed <= '1';
+                                r_test_passed <= not r_test_failed;
                             end if;
                         end if;
 

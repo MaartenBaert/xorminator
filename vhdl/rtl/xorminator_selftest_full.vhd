@@ -28,7 +28,7 @@ entity xorminator_selftest_full is
         adv_subtest    : out unsigned(1 downto 0);
         adv_hist_min   : out unsigned(8 downto 0);
         adv_hist_max   : out unsigned(8 downto 0);
-        adv_chisquared : out unsigned(11 downto 0)
+        adv_chisquared : out unsigned(12 downto 0)
 
     );
 end xorminator_selftest_full;
@@ -61,8 +61,9 @@ architecture rtl of xorminator_selftest_full is
     );
 
     -- FSM
-    type t_state is (STATE_CLEAR, STATE_COUNT, STATE_PROCESS, STATE_DONE, STATE_HALT);
+    type t_state is (STATE_CLEAR, STATE_COUNT, STATE_PROCESS, STATE_DONE);
     signal r_state       : t_state;
+    signal r_state_prev  : t_state;
     signal r_counter     : unsigned(15 downto 0);
     signal r_source      : unsigned(1 downto 0);
     signal r_subtest     : unsigned(1 downto 0);
@@ -70,8 +71,9 @@ architecture rtl of xorminator_selftest_full is
     signal r_test_failed : std_logic;
 
     -- raw data delay register
-    signal r_raw_data_s : std_logic_vector(7 downto 0);
-    signal r_raw_data_d : std_logic_vector(7 downto 0);
+    signal r_raw_data_s   : std_logic_vector(7 downto 0);
+    signal r_raw_data_d   : std_logic_vector(7 downto 0);
+    signal r_preprocessed : std_logic_vector(7 downto 0);
 
     -- current histogram index and value
     signal r_hist_index : unsigned(7 downto 0);
@@ -82,7 +84,7 @@ architecture rtl of xorminator_selftest_full is
     signal r_hist_max : unsigned(8 downto 0);
 
     -- chi-square test
-    signal r_chisquared_value : unsigned(11 downto 0);
+    signal r_chisquared_value : unsigned(12 downto 0);
 
     -- histogram memory
     type t_histogram is array(0 to 2**8 - 1) of unsigned(8 downto 0);
@@ -99,7 +101,7 @@ begin
     -- outputs
     test_passed    <= r_test_passed;
     test_failed    <= r_test_failed;
-    adv_done       <= '1' when r_state = STATE_DONE else '0';
+    adv_done       <= '1' when r_state_prev = STATE_DONE else '0';
     adv_source     <= r_source;
     adv_subtest    <= r_subtest;
     adv_hist_min   <= r_hist_min;
@@ -112,18 +114,17 @@ begin
         variable v_incremented     : unsigned(9 downto 0);
         variable v_histogram_wdata : unsigned(8 downto 0);
         variable v_histogram_wen   : std_logic;
-        variable v_chisquared_temp : unsigned(12 downto 0);
+        variable v_chisquared_temp : unsigned(13 downto 0);
 
         -- next state related
-        variable v_state_next      : t_state;
-        variable v_counter_next    : unsigned(15 downto 0);
         variable v_preprocessed    : std_logic_vector(7 downto 0);
-        variable v_hist_index_next : unsigned(7 downto 0);
+        variable v_hist_index : unsigned(7 downto 0);
 
     begin
         if rising_edge(clk) then
             if rst = '1' then
                 r_state <= STATE_CLEAR;
+                r_state_prev <= STATE_CLEAR;
                 r_counter <= (others => '0');
                 r_source <= (others => '0');
                 r_subtest <= (others => '0');
@@ -139,21 +140,53 @@ begin
             else
 
                 -- FSM
-                v_state_next := r_state;
-                v_counter_next := r_counter;
-                v_histogram_wdata := (others => '0');
-                v_histogram_wen := '0';
                 case r_state is
 
                     when STATE_CLEAR =>
 
                         -- increment counter
                         if r_counter(7 downto 0) = 255 then
-                            v_state_next := STATE_COUNT;
-                            v_counter_next := (others => '0');
+                            r_state <= STATE_COUNT;
+                            r_counter <= (others => '0');
                         else
-                            v_counter_next := r_counter + 1;
+                            r_counter <= r_counter + 1;
                         end if;
+
+                    when STATE_COUNT =>
+
+                        -- increment counter
+                        if r_counter = 65535 then
+                            r_state <= STATE_PROCESS;
+                            r_counter <= (others => '0');
+                        else
+                            r_counter <= r_counter + 1;
+                        end if;
+
+                    when STATE_PROCESS =>
+
+                        -- increment counter
+                        if r_counter(7 downto 0) = 255 then
+                            r_state <= STATE_DONE;
+                            r_counter <= (others => '0');
+                        else
+                            r_counter <= r_counter + 1;
+                        end if;
+
+                    when STATE_DONE =>
+
+                        -- clear counter
+                        r_state <= STATE_CLEAR;
+                        r_counter <= (others => '0');
+
+                end case;
+
+                -- processing
+                r_state_prev <= r_state;
+                v_histogram_wdata := (others => '0');
+                v_histogram_wen := '0';
+                case r_state_prev is
+
+                    when STATE_CLEAR =>
 
                         -- clear test registers
                         r_hist_min <= (others => '1');
@@ -164,14 +197,6 @@ begin
                         v_histogram_wen := '1';
 
                     when STATE_COUNT =>
-
-                        -- increment counter
-                        if r_counter = 65535 then
-                            v_state_next := STATE_PROCESS;
-                            v_counter_next := (others => '0');
-                        else
-                            v_counter_next := r_counter + 1;
-                        end if;
 
                         -- increment histogram value
                         v_incremented := resize(r_hist_value, 10) + 1;
@@ -186,16 +211,8 @@ begin
 
                     when STATE_PROCESS =>
 
-                        -- increment counter
-                        if r_counter(7 downto 0) = 255 then
-                            v_state_next := STATE_DONE;
-                            v_counter_next := (others => '0');
-                        else
-                            v_counter_next := r_counter + 1;
-                        end if;
-
                         -- check that histogram values are within tolerance
-                        if r_hist_value < 112 or r_hist_value >= 448 then
+                        if r_hist_value < 96 or r_hist_value >= 480 then
                             r_test_passed <= '0';
                             r_test_failed <= '1';
                         end if;
@@ -209,47 +226,35 @@ begin
                         end if;
 
                         -- update chi-squared value
-                        v_chisquared_temp := resize(r_chisquared_value, 13) + c_square(to_integer(r_hist_value(8 downto 1)));
-                        if v_chisquared_temp(12) = '1' then
+                        v_chisquared_temp := resize(r_chisquared_value, 14) + c_square(to_integer(r_hist_value(8 downto 1)));
+                        if v_chisquared_temp(13) = '1' then
                             r_test_passed <= '0';
                             r_test_failed <= '1';
                             r_chisquared_value <= (others => '1');
                         else
-                            r_chisquared_value <= v_chisquared_temp(11 downto 0);
+                            r_chisquared_value <= v_chisquared_temp(12 downto 0);
                         end if;
 
                     when STATE_DONE =>
 
-                        -- check that chi-squared value is within tolerance
-                        if r_chisquared_value >= 3584 then
-                            v_state_next := STATE_HALT;
-                            r_test_passed <= '0';
-                            r_test_failed <= '1';
+                        -- switch source/test
+                        if r_source < 2 then
+                            r_source <= r_source + 1;
                         else
-                            v_state_next := STATE_CLEAR;
-                            if r_source < 2 then
-                                r_source <= r_source + 1;
-                            else
-                                r_source <= (others => '0');
-                                r_subtest <= r_subtest + 1;
-                                if r_subtest = 3 then
-                                    r_test_passed <= '1';
-                                end if;
+                            r_source <= (others => '0');
+                            r_subtest <= r_subtest + 1;
+                            if r_subtest = 3 then
+                                r_test_passed <= not r_test_failed;
                             end if;
                         end if;
 
-                    when STATE_HALT =>
-                        -- do nothing
+                        -- check that chi-squared value is within tolerance
+                        if r_chisquared_value < 128 or r_chisquared_value >= 4352 then
+                            r_test_passed <= '0';
+                            r_test_failed <= '1';
+                        end if;
 
                 end case;
-                r_state <= v_state_next;
-                r_counter <= v_counter_next;
-
-                -- write to memory
-                if v_histogram_wen = '1' then
-                    r_hist_value <= v_histogram_wdata;
-                    r_histogram(to_integer(r_hist_index)) <= v_histogram_wdata;
-                end if;
 
                 -- input preprocessing
                 case r_source is
@@ -263,55 +268,69 @@ begin
                 r_raw_data_d <= r_raw_data_s;
                 case r_subtest is
                     when "00" =>
-                        v_preprocessed(0) := r_raw_data_s(0) xor r_raw_data_d(0);
-                        v_preprocessed(1) := r_raw_data_d(1) xor r_raw_data_s(1);
-                        v_preprocessed(2) := r_raw_data_d(2) xor r_raw_data_s(2);
-                        v_preprocessed(3) := r_raw_data_s(3) xor r_raw_data_d(3);
-                        v_preprocessed(4) := r_raw_data_d(4) xor r_raw_data_s(4);
-                        v_preprocessed(5) := r_raw_data_s(5) xor r_raw_data_d(5);
-                        v_preprocessed(6) := r_raw_data_s(6) xor r_raw_data_d(6);
-                        v_preprocessed(7) := r_raw_data_d(7) xor r_raw_data_s(7);
+                        v_preprocessed(0) := r_raw_data_d(0);
+                        v_preprocessed(1) := r_raw_data_s(1);
+                        v_preprocessed(2) := r_raw_data_s(2);
+                        v_preprocessed(3) := r_raw_data_d(3);
+                        v_preprocessed(4) := r_raw_data_s(4);
+                        v_preprocessed(5) := r_raw_data_d(5);
+                        v_preprocessed(6) := r_raw_data_d(6);
+                        v_preprocessed(7) := r_raw_data_s(7);
                     when "01" =>
-                        v_preprocessed(0) := r_raw_data_s(0) xor r_raw_data_s(1);
-                        v_preprocessed(1) := r_raw_data_d(1) xor r_raw_data_d(0);
-                        v_preprocessed(2) := r_raw_data_d(2) xor r_raw_data_d(3);
-                        v_preprocessed(3) := r_raw_data_s(3) xor r_raw_data_s(2);
-                        v_preprocessed(4) := r_raw_data_d(4) xor r_raw_data_d(5);
-                        v_preprocessed(5) := r_raw_data_s(5) xor r_raw_data_s(4);
-                        v_preprocessed(6) := r_raw_data_s(6) xor r_raw_data_s(7);
-                        v_preprocessed(7) := r_raw_data_d(7) xor r_raw_data_d(6);
+                        v_preprocessed(0) := r_raw_data_s(1);
+                        v_preprocessed(1) := r_raw_data_d(0);
+                        v_preprocessed(2) := r_raw_data_d(3);
+                        v_preprocessed(3) := r_raw_data_s(2);
+                        v_preprocessed(4) := r_raw_data_d(5);
+                        v_preprocessed(5) := r_raw_data_s(4);
+                        v_preprocessed(6) := r_raw_data_s(7);
+                        v_preprocessed(7) := r_raw_data_d(6);
                     when "10" =>
-                        v_preprocessed(0) := r_raw_data_s(0) xor r_raw_data_s(2);
-                        v_preprocessed(1) := r_raw_data_d(1) xor r_raw_data_d(3);
-                        v_preprocessed(2) := r_raw_data_d(2) xor r_raw_data_d(0);
-                        v_preprocessed(3) := r_raw_data_s(3) xor r_raw_data_s(1);
-                        v_preprocessed(4) := r_raw_data_d(4) xor r_raw_data_d(6);
-                        v_preprocessed(5) := r_raw_data_s(5) xor r_raw_data_s(7);
-                        v_preprocessed(6) := r_raw_data_s(6) xor r_raw_data_s(4);
-                        v_preprocessed(7) := r_raw_data_d(7) xor r_raw_data_d(5);
+                        v_preprocessed(0) := r_raw_data_s(2);
+                        v_preprocessed(1) := r_raw_data_d(3);
+                        v_preprocessed(2) := r_raw_data_d(0);
+                        v_preprocessed(3) := r_raw_data_s(1);
+                        v_preprocessed(4) := r_raw_data_d(6);
+                        v_preprocessed(5) := r_raw_data_s(7);
+                        v_preprocessed(6) := r_raw_data_s(4);
+                        v_preprocessed(7) := r_raw_data_d(5);
                     when "11" =>
-                        v_preprocessed(0) := r_raw_data_s(0) xor r_raw_data_s(4);
-                        v_preprocessed(1) := r_raw_data_d(1) xor r_raw_data_d(5);
-                        v_preprocessed(2) := r_raw_data_d(2) xor r_raw_data_d(6);
-                        v_preprocessed(3) := r_raw_data_s(3) xor r_raw_data_s(7);
-                        v_preprocessed(4) := r_raw_data_d(4) xor r_raw_data_d(0);
-                        v_preprocessed(5) := r_raw_data_s(5) xor r_raw_data_s(1);
-                        v_preprocessed(6) := r_raw_data_s(6) xor r_raw_data_s(2);
-                        v_preprocessed(7) := r_raw_data_d(7) xor r_raw_data_d(3);
+                        v_preprocessed(0) := r_raw_data_s(4);
+                        v_preprocessed(1) := r_raw_data_d(5);
+                        v_preprocessed(2) := r_raw_data_d(6);
+                        v_preprocessed(3) := r_raw_data_s(7);
+                        v_preprocessed(4) := r_raw_data_d(0);
+                        v_preprocessed(5) := r_raw_data_s(1);
+                        v_preprocessed(6) := r_raw_data_s(2);
+                        v_preprocessed(7) := r_raw_data_d(3);
                     when others => -- to keep simulation happy (X, U, ...)
                 end case;
+                r_preprocessed(0) <= r_raw_data_s(0) xor v_preprocessed(0);
+                r_preprocessed(1) <= r_raw_data_d(1) xor v_preprocessed(1);
+                r_preprocessed(2) <= r_raw_data_d(2) xor v_preprocessed(2);
+                r_preprocessed(3) <= r_raw_data_s(3) xor v_preprocessed(3);
+                r_preprocessed(4) <= r_raw_data_d(4) xor v_preprocessed(4);
+                r_preprocessed(5) <= r_raw_data_s(5) xor v_preprocessed(5);
+                r_preprocessed(6) <= r_raw_data_s(6) xor v_preprocessed(6);
+                r_preprocessed(7) <= r_raw_data_d(7) xor v_preprocessed(7);
 
                 -- determine next address
-                if v_state_next = STATE_COUNT then
-                    v_hist_index_next := unsigned(v_preprocessed);
+                if r_state = STATE_COUNT then
+                    v_hist_index := unsigned(r_preprocessed);
                 else
-                    v_hist_index_next := unsigned(v_counter_next(7 downto 0));
+                    v_hist_index := unsigned(r_counter(7 downto 0));
+                end if;
+
+                -- write to memory if necessary
+                if v_histogram_wen = '1' then
+                    r_hist_value <= v_histogram_wdata;
+                    r_histogram(to_integer(r_hist_index)) <= v_histogram_wdata;
                 end if;
 
                 -- read from memory if necessary
-                if v_hist_index_next /= r_hist_index then
-                    r_hist_index <= v_hist_index_next;
-                    r_hist_value <= r_histogram(to_integer(v_hist_index_next));
+                r_hist_index <= v_hist_index;
+                if v_hist_index /= r_hist_index then
+                    r_hist_value <= r_histogram(to_integer(v_hist_index));
                 end if;
 
             end if;

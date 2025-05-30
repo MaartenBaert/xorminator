@@ -40,7 +40,7 @@ perturbations in the state of the oscillator, which due to its chaotic nature
 are amplified over time and result in drastically different outcomes. Even when
 the oscillator is started from the same initial state multiple times, it will
 experience different thermal noise each time, which will cause it to rapidly
-diverge and produce an completely different waveform.
+diverge and produce a completely different waveform.
 
 The oscillator has a reset signal that can be used to shut it down when not in
 use, which saves power and ensures that the oscillator always starts from a
@@ -66,15 +66,30 @@ The state transfer function of the oscillator (ignoring reset) is:
     X'[7] = X[6] xor X[5] xor mux(X[3], X[2], C7) xor not C7
 
 This function has no fixed points (i.e. no stable states) regardless of the
-values of C0 to C7. This was verified exhaustively (see `core_validation.py`).
+values of C0 to C7. This was verified exhaustively (see `source_validation.py`).
 
 To see how this oscillator behaves in simulation, take a look at the [analog simulation results](analog-simulation.md). For characterization results on actual hardware, take a look at the [characterization on a Xilinx Artix 7 XC7A100T FPGA](characterization-xilinx-artix7-xc7a100t.md).
+
+The layout of the LUTs and flip-flops of the oscillator and the sampling circuit is important, so fixed placement and pin mapping is used to make the placement and routing predictable and as short as possible, taking into account the specific architecture of the FPGA.
+
+In the device view, the layout looks like this:
+
+![Oscillator layout 1](img/oscillator-layout-1.png)
+
+The same layout with routing shown:
+
+![Oscillator layout 2](img/oscillator-layout-2.png)
+
+The highlighted (white) nets correspond to the internal wires of the oscillator.
 
 Post-processing
 ---------------
 
-
+TODO
 
 Self-test
 ---------
 
+TODO
+
+More information about the self-test implementation can be found [here](trng-testing.md)

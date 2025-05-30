@@ -92,7 +92,7 @@ package xorminator_internals is
             -- advanced test result output
             adv_done       : out std_logic;
             adv_subtest    : out unsigned(2 downto 0);
-            adv_hist_value : out unsigned(7 downto 0)
+            adv_hist_value : out unsigned(9 downto 0)
 
         );
     end component;
@@ -120,7 +120,7 @@ package xorminator_internals is
             adv_subtest    : out unsigned(1 downto 0);
             adv_hist_min   : out unsigned(8 downto 0);
             adv_hist_max   : out unsigned(8 downto 0);
-            adv_chisquared : out unsigned(11 downto 0)
+            adv_chisquared : out unsigned(12 downto 0)
 
         );
     end component;
